@@ -5,15 +5,15 @@ import {fetchData} from '../../Fetch';
 
 const baseURL = window.location.origin;
 
-// Colours for all charts broken down by only by site
-const siteColours = [
+// Colours for all charts broken down by multiple fields
+const pieColours = [
   '#F0CC00', '#27328C', '#2DC3D0', '#4AE8C2', '#D90074', '#7900DB', '#FF8000',
   '#0FB500', '#CC0000', '#DB9CFF', '#8c564b', '#c49c94', '#e377c2', '#f7b6d2',
   '#7f7f7f', '#c7c7c7', '#bcbd22', '#dbdb8d', '#17becf', '#9edae5',
 ];
 
-// Colours for the recruitment bar chart: breakdown by sex
-const sexColours = ['#2FA4E7', '#1C70B6'];
+// Colours for bar charts with 2 fields
+const barColours = ['#2FA4E7', '#1C70B6'];
 
 /**
  * onload - override link click to cancel any fetch for statistical data.
@@ -70,111 +70,50 @@ const elementVisibility = (element, callback) => {
   observer.observe(element);
 };
 
-/**
- * formatPieData - used for the recruitment widget
- * @param {object} data
- * @return {[]}
- */
-const formatPieData = (data) => {
-  const processedData = [];
-  for (const [i] of Object.entries(data)) {
-    const siteData = [data[i].label, data[i].total];
-    processedData.push(siteData);
-  }
-  return processedData.filter((item) => item[1] > 0);
-};
-
-/**
- * formatBarData - used for the recruitment widget
- * @param {object} data
- * @return {[]}
- */
-const formatBarData = (data) => {
-  const processedData = [];
-  if (data['datasets']) {
-    const females = ['Female'];
-    processedData.push(females.concat(data['datasets']['female']));
-  }
-  if (data['datasets']) {
-    const males = ['Male'];
-    processedData.push(males.concat(data['datasets']['male']));
-  }
-  return processedData;
-};
-
-const createPieChart = (columns, id, targetModal, colours) => {
+const createBasicChart = (chartType, columns, id, targetModal, colours) => {
   let newChart = c3.generate({
     bindto: targetModal ? targetModal : id,
     data: {
-      columns: columns,
-      type: 'pie',
+      x: 'x',
+      // rows for pie and columns for bar
+      rows: chartType == 'pie' ? columns : null,
+      columns: chartType == 'bar' ? columns : null,
+      type: chartType,
+      color: (color, d) =>  columns.length <= 2 && chartType == 'bar' ? colours[d.x] : color
     },
     size: {
-      height: targetModal ? 700 : 350,
       width: targetModal ? 700 : 350,
-    },
-    color: {
-      pattern: colours,
-    },
-    pie: {
-      label: {
-        format: function(value, ratio, id) {
-          return value + "("+Math.round(100*ratio)+"%)";
-        }
-      }
-    },
-  });
-  charts.push(newChart);
-  resizeGraphs();
-}
-
-const createBarChart = (labels, columns, id, targetModal, colours, dataType) => {
-  let newChart = c3.generate({
-    bindto: targetModal ? targetModal : id,
-    data: {
-      x: dataType == 'pie' && 'x',
-      columns: columns,
-      type: 'bar',
-      colors: dataType === 'pie' ? {
-          [columns[1][0]]: function (d) {
-            return colours[d.index];
-          }
-        } :
-        {
-          [columns[0][0]]: colours[0],
-          [columns[1][0]]: colours[1],
-        }
-    },
-    size: {
-      width: targetModal ? 1000 : 350,
       height: targetModal ? 700 : 350,
     },
     axis: {
       x: {
         type: 'category',
-        categories: labels, 
       },
-      y: {
-        label: {
-          text: 'Candidates registered',
-          position: 'inner-top'
-        },
-      },
+      // y: {
+      //   label: {
+      //     text: 'Candidates registered',
+      //     position: 'inner-top'
+      //   },
+      // },
     },
-    color: {
-      pattern: colours,
-    },
-    legend: dataType === 'bar' ? {
+    tooltip: columns.length <= 2 && chartType == 'bar' ? {
+      contents: function(d, defaultTitleFormat, defaultValueFormat, color) {
+          return newChart.internal.getTooltipContent.call(this, d, defaultTitleFormat, defaultValueFormat, () =>  colours[d[0].x])
+      }
+    } : null,
+    legend: chartType === 'bar' && columns.length > 2 ? {
       position: 'inset',
       inset: {
         anchor: 'top-right',
         x: 20,
         y: 10,
         step: 2
+      },
+    } : targetModal ? {
+        show: true
+      } : {
+        show: false
       }
-    } : {
-      show: false
-    }
   });
   charts.push(newChart);
   resizeGraphs();
@@ -212,7 +151,7 @@ const createLineChart = (data, columns, id, label, targetModal) => {
       enabled: true,
     },
     color: {
-      pattern: siteColours,
+      pattern: barColours,
     },
     tooltip: {
       // hide if 0
@@ -273,43 +212,24 @@ const setupCharts = async (targetIsModal, chartDetails) => {
       let data = chart.data;
       const chartPromise = (data && !chart.filters ? Promise.resolve(data) : getChartData(chartID, chart.filters))
         .then((chartData) => {
-          let columns = {};
-          let labels = [];
+          let columns = [];
           let colours = [];
-          if (chart.dataType === 'pie') {
-            columns = formatPieData(chartData);
-            colours = siteColours;
-            // reformating the columns for a bar chart when it was originally pie data
-            if (chart.chartType == 'bar') {
-              let newColumns = [['x'], [chart.label]];
-              columns.forEach((column, index) => {
-                newColumns[0].push(column[0]);
-                newColumns[1].push(column[1]);
-                labels.push(column[0]);
-              });
-              columns = newColumns;
-            }
-          } else if (chart.dataType === 'bar') {
-            columns = formatBarData(chartData);
-            labels = chartData.labels;
-            colours = sexColours;
-          } else if (chart.dataType === 'line') {
+          if (chart.chartType === 'line') {
             columns = formatLineData(chartData);
-            if (chart.chartType !== 'line') {
-              // remove first and last (x and total)
-              columns = columns.slice(1, columns.length - 1);
-            }
-          }
-          if (chart.chartType === 'pie') {
-            createPieChart(columns, `#${chartID}`, targetIsModal && '#dashboardModal', colours);
-          } else if (chart.chartType === 'bar') {
-            createBarChart(labels, columns, `#${chartID}`, targetIsModal && '#dashboardModal', colours, chart.dataType);
-          } else if (chart.chartType === 'line') {
             createLineChart(chartData, columns, `#${chartID}`, chart.label, targetIsModal && '#dashboardModal');
+          } else {
+            // pie or bar chart
+            if (chart.chartType == 'pie') {
+              columns = formatDataForPie(chartData);
+              colours = pieColours;
+            } else {
+              colours = pieColours;
+              columns = chartData;
+            }
+            createBasicChart(chart.chartType, columns, `#${chartID}`, targetIsModal && '#dashboardModal', colours);
           }
           newChartDetails[section][chartID].data = chartData;
         });
-
       chartPromises.push(chartPromise);
     });
   });
@@ -317,6 +237,47 @@ const setupCharts = async (targetIsModal, chartDetails) => {
   await Promise.all(chartPromises);
   return newChartDetails;
 };
+
+/**
+ * formatDataForPie - used for the study progression widget
+ * @param {*[]} data
+ * @return {*[]}
+ */
+// If the data was in a multi-dimensional form,
+// then it must be aggregated for use in a pie chart.
+// ie: if charts.class.inc returns data such as:
+// [[x, Montreal, Ottawa, Montreal, Ottawa],[Male, x,...],[Female, y,...]]
+// We want the data to look like:
+// [[x, Montreal Male, Ottawa Male, Montreal Female, Ottawa Female],[-1, x,..., y,...]]
+function formatDataForPie(data) {
+  if (data[0].length > data[1].length) {
+    const processedData = [];
+
+    // Create the first row with the updated headers
+    const headers = ['x'];
+    for (let i = 1; i < data.length; i++) {
+      for (let j = 1; j < data[i].length; j++) {
+        headers.push(data[0][j] + ' ' + data[i][0]);
+      }
+    }
+    processedData.push(headers);
+  
+    // Create the second row with the values
+    const values = [];
+    for (let i = 1; i < data.length; i++) {
+        if (i === 1) {
+            values.push(-1, ...data[i].slice(1));
+        } else {
+            values.push(...data[i].slice(1));
+        }
+    }
+    processedData.push(values);
+  
+    return processedData; 
+  } else {
+    return data;
+  }
+}
 
 /**
  * formatLineData - used for the study progression widget

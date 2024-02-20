@@ -84,42 +84,23 @@ const WidgetIndex = (props) => {
     </div>;
   };
 
+  /**
+   * Function to download charts as csv
+   *
+   * @param {*[]} data
+   * @param {string} filename
+   * @param {string} dataType ('line' or undefined for basic charts)
+   */
   const downloadAsCSV = (data, filename, dataType) => {
-    const convertBarToCSV = (data) => {
+    const convertBasicToCSV = (data) => {
       const csvRows = [];
 
-      // Adding headers row
-      const headers = ['Labels', ...Object.keys(data.datasets)];
-      csvRows.push(headers.join(','));
+      // remove extra headers
+      let newData = [data[0].slice(data[0].length - data[1].length), ...data.slice(1)]
 
-      // Adding data rows
-      const maxDatasetLength = Math.max(...Object.values(data.datasets).map(
-        (arr) => arr.length)
-      );
-      for (let i = 0; i < maxDatasetLength; i++) {
-        const values = [`"${data.labels[i]}"` || '']; // Label for this row
-        for (const datasetKey of Object.keys(data.datasets)) {
-          const value = data.datasets[datasetKey][i];
-          values.push(`"${value}"` || '');
-        }
-        csvRows.push(values.join(','));
-      }
-      return csvRows.join('\n');
-    };
-
-    const convertPieToCSV = (data) => {
-      const csvRows = [];
-      const headers = Object.keys(data[0]);
-      csvRows.push(headers.join(','));
-
-      for (const row of data) {
-        const values = headers.map((header) => {
-          const escapedValue = row[header].toString().replace(/"/g, '\\"');
-          return `"${escapedValue}"`;
-        });
-        csvRows.push(values.join(','));
-      }
-
+      newData.map((row) => {
+        csvRows.push(row.join(','));
+      })
       return csvRows.join('\n');
     };
 
@@ -146,12 +127,10 @@ const WidgetIndex = (props) => {
     };
 
     let csvData = '';
-    if (dataType == 'pie') {
-      csvData = convertPieToCSV(data);
-    } else if (dataType == 'bar') {
-      csvData = convertBarToCSV(data);
-    } else if (dataType == 'line') {
+    if (dataType == 'line') {
       csvData = convertLineToCSV(data);
+    } else {
+      csvData = convertBasicToCSV(data);
     }
     const blob = new Blob([csvData], {type: 'text/csv'});
     const url = URL.createObjectURL(blob);
