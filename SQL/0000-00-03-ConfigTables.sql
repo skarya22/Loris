@@ -92,9 +92,10 @@ INSERT INTO ConfigSettings (Name, Description, Visible, AllowMultiple, DataType,
 INSERT INTO ConfigSettings (Name, Description, Visible, AllowMultiple, DataType, Parent, Label, OrderNumber) SELECT 'issue_tracker_url', 'URL of the prefered issue tracker for this study', 1, 0, 'text', ID, 'Issue tracker URL', 3 FROM ConfigSettings WHERE Name="www";
 
 
-INSERT INTO ConfigSettings (Name, Description, Visible, AllowMultiple, Label, OrderNumber) VALUES ('dashboard', 'Settings that affect the appearance of the dashboard and its charts', 1, 0, 'Dashboard', 5);
+INSERT INTO ConfigSettings (Name, Description, Visible, AllowMultiple, Label, OrderNumber) VALUES ('dashboard', 'Settings that affect the appearance of the dashboard and its charts.', 1, 0, 'Dashboard', 5);
 INSERT INTO ConfigSettings (Name, Description, Visible, AllowMultiple, DataType, Parent, Label, OrderNumber) SELECT 'projectDescription', 'Description of the study displayed in main dashboard panel', 1, 0, 'textarea', ID, 'Project Description', 1 FROM ConfigSettings WHERE Name="dashboard";
 INSERT INTO ConfigSettings (Name, Description, Visible, AllowMultiple, DataType, Parent, Label, OrderNumber) SELECT 'recruitmentTarget', 'Target number of participants for the study', 1, 0, 'text', ID, 'Target number of participants', 2 FROM ConfigSettings WHERE Name="dashboard";
+INSERT INTO ConfigSettings (Name, Description, Visible, AllowMultiple, DataType, Parent, Label, OrderNumber) SELECT 'dashboardCharts', 'JSON object of chart details in Dashboard widgets.', 1, 1, 'textarea', ID, 'Dashboard Charts', 1 FROM ConfigSettings WHERE Name="dashboard";
 
 INSERT INTO ConfigSettings (Name, Description, Visible, AllowMultiple, Label, OrderNumber) VALUES ('imaging_modules', 'DICOM Archive and Imaging Browser settings', 1, 0, 'Imaging Modules', 6);
 INSERT INTO ConfigSettings (Name, Description, Visible, AllowMultiple, DataType, Parent, Label, OrderNumber) SELECT 'patientIDRegex', 'Regex for masking the Patient ID header field', 1, 0, 'text', ID, 'Patient ID regex', 1 FROM ConfigSettings WHERE Name="imaging_modules";
@@ -223,6 +224,83 @@ INSERT INTO Config (ConfigID, Value) SELECT ID, 'false' FROM ConfigSettings WHER
 INSERT INTO Config (ConfigID, Value) SELECT ID, "localhost" FROM ConfigSettings WHERE Name="host";
 
 INSERT INTO Config (ConfigID, Value) SELECT ID, "This database provides an on-line mechanism to store both imaging and behavioural data collected from various locations. Within this framework, there are several tools that will make this process as efficient and simple as possible. For more detailed information regarding any aspect of the database, please click on the Help icon at the top right. Otherwise, feel free to contact us at the DCC. We strive to make data collection almost fun." FROM ConfigSettings WHERE Name="projectDescription";
+INSERT INTO Config (ConfigID, Value) SELECT ID, '{
+    "chartID": "siterecruitment_bysex",
+    "panel": "Site Breakdown",
+    "title": "Total Recruitment per Site by Sex",
+    "options": {
+        "bar": "bar",
+        "pie": "pie"
+    },
+    "sizing": 5,
+    "idColumn": "t.RegistrationCenterID",
+    "targetTable": "candidate",
+    "extraWhere": "AND t.RegistrationCenterID IN (siteIDs)",
+    "dataType": "site",
+    "dataLabels": [
+        "Male",
+        "Female"
+    ],
+    "groupedBy": "t.Sex"
+}' FROM ConfigSettings WHERE Name="dashboardCharts";
+INSERT INTO Config (ConfigID, Value) SELECT ID, '{
+    "chartID": "agerecruitment_pie",
+    "panel": "Site Breakdown",
+    "title": "Total Recruitment by Age",
+    "options": {
+        "bar": "bar",
+        "pie": "pie"
+    },
+    "sizing": 5,
+    "idColumn": "FLOOR(DATEDIFF(t.date_registered, t.DoB) \/ 365.25 \/ 10) * 10",
+    "targetTable": "candidate",
+    "extraWhere": "AND t.DoB IS NOT NULL AND t.DoB <= t.date_registered",
+    "dataType": "ageSplit",
+    "dataLabels": [
+        "Age (Years)"
+    ],
+    "groupedBy": ""
+}' FROM ConfigSettings WHERE Name="dashboardCharts";
+INSERT INTO Config (ConfigID, Value) SELECT ID, '{
+    "chartID": "ethnicity",
+    "panel": "Site Breakdown",
+    "sizing": 5,
+    "title": "Ethnicity at Screening",
+    "idColumn": " t.Ethnicity",
+    "chartType": "bar",
+    "targetTable": "candidate",
+    "label": "Ethnicity",
+    "extraWhere": "AND t.Entity_type=\'Human\'",
+    "options": {
+        "bar": "bar",
+        "pie": "pie"
+    },
+    "dataType": "",
+    "dataLabels": [
+        "Participants"
+    ],
+    "groupedBy": ""
+}' FROM ConfigSettings WHERE Name="dashboardCharts";
+INSERT INTO Config (ConfigID, Value) SELECT ID, '{
+    "chartID": "siterecruitment_pie",
+    "panel": "Site Breakdown",
+    "sizing": 5,
+    "title": "Total Recruitment per Site",
+    "idColumn": "t.RegistrationCenterID",
+    "targetTable": "candidate",
+    "label": "Ethnicity",
+    "extraWhere": "AND t.Entity_type=\'Human\' AND t.Active=\'Y\' AND t.RegistrationCenterID IN (siteIDs)",
+    "options": {
+        "pie": "pie",
+        "bar": "bar"
+    },
+    "dataType": "site",
+    "dataLabels": [
+        "Ethnicity (Count)"
+    ],
+    "groupedBy": ""
+}' FROM ConfigSettings WHERE Name="dashboardCharts";
+
 
 INSERT INTO Config (ConfigID, Value) SELECT ID, "." FROM ConfigSettings WHERE Name="patientIDRegex";
 INSERT INTO Config (ConfigID, Value) SELECT ID, "." FROM ConfigSettings WHERE Name="patientNameRegex";

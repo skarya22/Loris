@@ -5,6 +5,7 @@ import Panel from 'Panel';
 import {QueryChartForm} from './helpers/queryChartForm';
 import {progressBarBuilder} from './helpers/progressbarBuilder';
 
+import {fetchData} from '../Fetch';
 import {setupCharts} from './helpers/chartBuilder';
 
 /**
@@ -17,52 +18,10 @@ const Recruitment = (props) => {
   const [loading, setLoading] = useState(true);
   let json = props.data;
 
-  const [chartDetails, setChartDetails] = useState({
-    'siteBreakdown': {
-      'agerecruitment_pie': {
-        sizing: 5,
-        title: 'Total recruitment by Age',
-        filters: '',
-        chartType: 'bar',
-        // dataType: 'bar',
-        // label: 'Age (Years)',
-        options: {pie: 'pie', bar: 'bar'},
-        legend: 'under',
-      },
-      'ethnicity_pie': {
-        sizing: 5,
-        title: 'Ethnicity at Screening',
-        filters: '',
-        chartType: 'bar',
-        // dataType: 'bar',
-        // label: 'Ethnicity',
-        options: {pie: 'pie', bar: 'bar'},
-        legend: 'under',
-      },
-      'siterecruitment_pie': {
-        sizing: 5,
-        title: 'Total Recruitment per Site',
-        filters: '',
-        chartType: 'bar',
-        // dataType: 'bar',
-        // label: 'Participants',
-        legend: '',
-        options: {pie: 'pie', bar: 'bar'},
-      },
-      'siterecruitment_bysex': {
-        sizing: 5,
-        title: 'Biological sex breakdown by site',
-        filters: '',
-        chartType: 'bar',
-        // dataType: 'bar',
-        legend: 'under',
-        options: {bar: 'bar', pie: 'pie'},
-      },
-    },
-  });
+  const [chartDetails, setChartDetails] = useState({});
 
-  const showChart = (section, chartID) => {
-    return props.showChart(section, chartID, chartDetails, setChartDetails);
+  const showChart = (panelID, chartID) => {
+    return props.showChart(panelID, chartID, chartDetails, setChartDetails);
   };
 
   const updateFilters = (formDataObj, section) => {
@@ -71,11 +30,18 @@ const Recruitment = (props) => {
 
   useEffect(() => {
     if (json && Object.keys(json).length !== 0) {
-      setupCharts(false, chartDetails).then((data) => {
-        setChartDetails(data);
-      });
       json = props.data;
-      setLoading(false);
+      let query = `${props.baseURL}/charts/getConfigChartNames`
+      fetchData(query).then((chartData) => {
+        setLoading(false);
+        // set chartDetails to have the panelIDs and chartIDs so that the divs can be created
+        setChartDetails(chartData);
+        setupCharts(false, chartData).then((data) => {
+          // update chartDetails to have the data so that it doesn't need to be re-pulled
+          setChartDetails(data);
+        });
+      })
+      
     }
   }, [props.data]);
 
@@ -84,9 +50,6 @@ const Recruitment = (props) => {
       <Panel
         title='Recruitment'
         id='statistics_recruitment'
-        onChangeView={() => {
-          setupCharts(false, chartDetails);
-        }}
         views={[
           {
             content:
@@ -95,27 +58,29 @@ const Recruitment = (props) => {
             </div>,
             title: 'Recruitment - overall',
           },
-          {
-            content:
+          ...Object.keys(chartDetails).map((panelID) => {
+            return {
+              content:
               json['recruitment']['overall']
               && json['recruitment']['overall']['total_recruitment'] > 0 ?
-              <>
-                <QueryChartForm
-                  Module={'statistics'}
-                  name={'recruitment'}
-                  id={'recruitmentSiteBreakdownForm'}
-                  data={json}
-                  callback={(formDataObj) => {
-                    updateFilters(formDataObj, 'siteBreakdown');
-                  }}
-                />
-                {Object.keys(chartDetails['siteBreakdown']).map((chartID) => {
-                  return showChart('siteBreakdown', chartID);
-                })}
-              </> :
-              <p>There have been no candidates registered yet.</p>,
-            title: 'Recruitment - site breakdown',
-          },
+                <>
+                  <QueryChartForm
+                    Module={'statistics'}
+                    name={'recruitment'}
+                    id={'recruitment' + panelID + 'Form'}
+                    data={json}
+                    callback={(formDataObj) => {
+                      updateFilters(formDataObj, panelID);
+                    }}
+                  />
+                  {Object.keys(chartDetails[panelID]).map((chartID) => {
+                    return showChart(panelID, chartID);
+                  })}
+                </> :
+                <p>There have been no candidates registered yet.</p>,
+              title: 'Recruitment - ' + panelID,
+            }
+          }),
           {
             content:
             <>

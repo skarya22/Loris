@@ -39,6 +39,10 @@ foreach ($_POST as $key => $value) {
             // A blank value is the same as deleting.
             $DB->delete('Config', ['ID' => $key]);
         } else {
+            // Make JSON value pretty.
+            if (substr($value, 0, 1) === '{' && substr($value, -1) === '}') {
+                $value = getPrettyJSON($value);
+            }
             if (! noDuplicateInDropdown($key, $value)) {
                 // Don't alter the table if the same key was passed twice.
                 continue;
@@ -83,10 +87,15 @@ foreach ($_POST as $key => $value) {
         $valueSplit       = explode("-", $value); // e.g. "remove-74"
         $removeID         = $valueSplit[1];
         //assert(count($keySplit) == 2);
+
         if ($action == 'add') {
             // This branch adds a new entry to the Config table.
             if ($value === "") {
                 continue;
+            }
+            // Make JSON value pretty.
+            if (substr($value, 0, 1) === '{' && substr($value, -1) === '}') {
+                $value = getPrettyJSON($value);
             }
             if (isDuplicate($ConfigSettingsID, $value)) {
                 displayError(
@@ -147,6 +156,28 @@ function isDuplicate($key, $value): bool
         ]
     );
     return intval($result) > 0;
+}
+/**
+ * Get Pretty JSON String
+ *
+ * @param string $value The value of the value
+ *
+ * @return string $value return pretty JSON value or original value
+ */
+function getPrettyJSON($value): string
+{
+    // Make JSON value pretty.
+    $json_value = json_encode(json_decode($value), JSON_PRETTY_PRINT);
+    if (!is_null($json_value) && $json_value != 'null') {
+        return $json_value;
+    } else {
+        displayError(
+            400,
+            "Invalid JSON Value submitted: "
+            . htmlspecialchars($value, ENT_QUOTES)
+        );
+        exit;
+    }
 }
 /**
  * Check dropdown list Duplicate value

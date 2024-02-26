@@ -70,16 +70,16 @@ const elementVisibility = (element, callback) => {
   observer.observe(element);
 };
 
-const createBasicChart = (chartType, columns, id, targetModal, colours) => {
+const createBasicChart = (chartType, data, id, targetModal, colours) => {
   let newChart = c3.generate({
     bindto: targetModal ? targetModal : id,
     data: {
       x: 'x',
       // rows for pie and columns for bar
-      rows: chartType == 'pie' ? columns : null,
-      columns: chartType == 'bar' ? columns : null,
+      rows: chartType == 'pie' ? data : null,
+      columns: chartType == 'bar' ? data : null,
       type: chartType,
-      color: (color, d) =>  columns.length <= 2 && chartType == 'bar' ? colours[d.x] : color
+      color: (color, d) =>  data.length <= 2 && chartType == 'bar' ? colours[d.x] : color
     },
     size: {
       width: targetModal ? 700 : 350,
@@ -89,19 +89,19 @@ const createBasicChart = (chartType, columns, id, targetModal, colours) => {
       x: {
         type: 'category',
       },
-      // y: {
-      //   label: {
-      //     text: 'Candidates registered',
-      //     position: 'inner-top'
-      //   },
-      // },
+      y: {
+        label: {
+          text: 'Candidates registered',
+          position: 'inner-top'
+        },
+      },
     },
-    tooltip: columns.length <= 2 && chartType == 'bar' ? {
+    tooltip: data.length <= 2 && chartType == 'bar' ? {
       contents: function(d, defaultTitleFormat, defaultValueFormat, color) {
           return newChart.internal.getTooltipContent.call(this, d, defaultTitleFormat, defaultValueFormat, () =>  colours[d[0].x])
       }
     } : null,
-    legend: chartType === 'bar' && columns.length > 2 ? {
+    legend: chartType === 'bar' && data.length > 2 ? {
       position: 'inset',
       inset: {
         anchor: 'top-right',
@@ -193,6 +193,7 @@ const getChartData = async (target, filters) => {
   if (filters) {
     query = query + filters;
   }
+
   return await fetchData(query);
 }
 
@@ -206,9 +207,9 @@ const getChartData = async (target, filters) => {
 const setupCharts = async (targetIsModal, chartDetails) => {
   const chartPromises = [];
   let newChartDetails = {...chartDetails}
-  Object.keys(chartDetails).forEach((section) => {
-    Object.keys(chartDetails[section]).forEach((chartID) => {
-      let chart = chartDetails[section][chartID];
+  Object.keys(chartDetails).forEach((panel) => {
+    Object.keys(chartDetails[panel]).forEach((chartID) => {
+      let chart = chartDetails[panel][chartID];
       let data = chart.data;
       const chartPromise = (data && !chart.filters ? Promise.resolve(data) : getChartData(chartID, chart.filters))
         .then((chartData) => {
@@ -219,16 +220,16 @@ const setupCharts = async (targetIsModal, chartDetails) => {
             createLineChart(chartData, columns, `#${chartID}`, chart.label, targetIsModal && '#dashboardModal');
           } else {
             // pie or bar chart
-            if (chart.chartType == 'pie') {
+            if (chart.chartType === 'pie') {
               columns = formatDataForPie(chartData);
               colours = pieColours;
-            } else {
+            } else if (chart.chartType === 'bar'){
               colours = pieColours;
               columns = chartData;
             }
             createBasicChart(chart.chartType, columns, `#${chartID}`, targetIsModal && '#dashboardModal', colours);
           }
-          newChartDetails[section][chartID].data = chartData;
+          newChartDetails[panel][chartID].data = chartData;
         });
       chartPromises.push(chartPromise);
     });

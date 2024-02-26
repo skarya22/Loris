@@ -84,27 +84,65 @@ class Charts extends \NDB_Page
         if (count($pathparts) != 2) {
             return new \LORIS\Http\Response\JSON\NotFound();
         }
-
+        
         switch ($pathparts[1]) {
-        case 'siterecruitment_pie':
-            return $this->_handleBasicChartData('t.RegistrationCenterID', 'candidate', "AND t.RegistrationCenterID IN (siteIDs)", "site", ['Participants'], '');
-        case 'agerecruitment_pie':
-            return $this->_handleBasicChartData("FLOOR(DATEDIFF(t.date_registered, t.DoB) / 365.25 / 10) * 10", "candidate", "AND t.DoB IS NOT NULL AND t.DoB <= t.date_registered", "ageSplit", ['Age (Years)'], '');
-        case 'ethnicity_pie':
-            return $this->_handleBasicChartData("t.Ethnicity", "candidate", "", "ethnicity", ['Ethnicity'], '');
-        case 'siterecruitment_bysex':
-            return $this->_handleBasicChartData("t.RegistrationCenterID", "candidate", "", "site", ['Male', 'Female'], 't.sex');
+        case 'getConfigChartNames':
+            return $this->_getConfigChartNames();
         case 'scans_bymonth':
             return $this->_handleScansByMonth();
         case 'siterecruitment_line':
             return $this->_handleSiteLineData();
         default:
-            return new \LORIS\Http\Response\JSON\NotFound();
+            return $this->_handleBasicChartData($pathparts[1]);
         }
     }
 
-    private function _handleBasicChartData($idColumn, $targetTable, $extraWhere, $dataType, $dataLabels, $groupedBy)
+    private function _getConfigChartNames() {
+        $dashboardPanels = $this->loris->getConfiguration()->getSetting('dashboardCharts');
+        $chartsData = [];
+        foreach($dashboardPanels as $panel) {
+            $decoded = json_decode($panel);
+            
+            if (!array_key_exists($decoded->panel, $chartsData)) {
+                $chartsData[$decoded->panel] = [];
+            }
+            $decoded->filters = '';
+            error_log(print_r($decoded->options, true));
+            $decoded->chartType = key($decoded->options);
+            $chartsData[$decoded->panel][$decoded->chartID] = $decoded;
+        }
+        
+        return new \LORIS\Http\Response\JsonResponse($chartsData);
+    }
+
+    private function _handleBasicChartData($chartID)
     {
+        // For Dashboard Charts:
+        // extraWhere: extra where clause to be added to the query.
+        //  ex.   'AND t.RegistrationCenterID IN (siteIDs)'
+        //  ex.   'AND t.Sex = "Male"'
+        // dataType = 'site' if extraWhere should replace 'siteIDs' with the allowed IDs of the user. 
+        // dataType = 'ageSplit' if the chart is an age split chart. This will split the age into groups of 10 years.
+        // dataLabels: the labels for the data. This is an array of strings.
+        //  ex.   ["Male", "Female"] if groupedBy = 't.Sex'
+        //  ex.   ["Participants"] if idColumn is based on the count of candidates.
+
+        $dashboardCharts = $this->loris->getConfiguration()->getSetting('dashboardCharts');
+        error_log("target chart is " . $chartID);
+        $targetChartData;
+
+        foreach($dashboardCharts as $chart) {
+            $decoded = json_decode($chart);
+            if ($decoded->chartID === $chartID) {
+                $targetChartData = $decoded;
+                break;
+            }
+        }
+
+        if ($targetChartData === null) {
+            return new \LORIS\Http\Response\JSON\NotFound();
+        }
+
         $params = $this->_parseGetParameters();
         $user = \NDB_Factory::singleton()->user();
         $DB = \NDB_Factory::singleton()->database();
@@ -115,8 +153,8 @@ class Charts extends \NDB_Page
     
         $siteIDs = implode(',', array_keys($list_of_sites));
     
-        if ($dataType === 'site') {
-            $extraWhere = str_replace('siteIDs', $siteIDs, $extraWhere);
+        if ($targetChartData->dataType === 'site') {
+            $targetChartData->extraWhere = str_replace('siteIDs', $siteIDs, $targetChartData->extraWhere);
         }
     
         $pieData = [
@@ -125,45 +163,42 @@ class Charts extends \NDB_Page
 
         $dataLabelIndex = [];
         $i = 1;
-        foreach ($dataLabels as $dataLabel) {
+        foreach ($targetChartData->dataLabels as $dataLabel) {
             $pieData[] = [$dataLabel];
             $dataLabelIndex[$dataLabel] = $i;
             $i++;
         }
 
-        if ($groupedBy === '') {
-            $groupedBy = $idColumn;
+        if ($targetChartData->groupedBy === '') {
+            $targetChartData->groupedBy = $targetChartData->idColumn;
         }
-
-        error_log("grouped by====================\n\n\n");
     
-        $query = "SELECT {$groupedBy} as groupedBy, {$idColumn} as id, COUNT(t.CandID) AS totalRecruitment
-                    FROM {$targetTable} t
+        $query = "SELECT {$targetChartData->groupedBy} as groupedBy, {$targetChartData->idColumn} as id, COUNT(t.CandID) AS totalRecruitment
+                    FROM {$targetChartData->targetTable} t
                     {$conditions['cohortJoin']}
                     {$conditions['participantStatusJoin']}
                     WHERE t.Active='Y'
-                    {$extraWhere}
+                    {$targetChartData->extraWhere}
                     AND t.Entity_type='Human'
                     {$conditions['projectQuery']}
                     {$conditions['cohortQuery']}
                     {$conditions['visitQuery']}
                     {$conditions['siteQuery']}
                     {$conditions['participantStatusQuery']}
-                    GROUP BY {$groupedBy}, {$idColumn}";
+                    GROUP BY {$targetChartData->groupedBy}, {$targetChartData->idColumn}";
     
-        error_log($query);
         $results = $DB->pselect($query, []);
     
         foreach ($results as $_ => $value) {
             $name = $value['id'];
             $totalRecruitment = $value['totalRecruitment'];
     
-            if ($dataType === 'site') {
+            if ($targetChartData->dataType === 'site') {
                 $name = $list_of_sites[$name];
             }
     
-            if ($dataType === 'ageSplit') {
-                $pieces = explode(' ', $idColumn);
+            if ($targetChartData->dataType === 'ageSplit') {
+                $pieces = explode(' ', $targetChartData->idColumn);
                 $last_word = array_pop($pieces) - 1;
     
                 $startOfSplit = $name;
@@ -175,7 +210,7 @@ class Charts extends \NDB_Page
                 $name = "Unknown";
             }
 
-            if (count($dataLabels) == 1) {
+            if (count($targetChartData->dataLabels) == 1) {
                 $pieData[0][] = $name;
                 $pieData[1][] = $totalRecruitment;
             } else {
@@ -185,9 +220,7 @@ class Charts extends \NDB_Page
             }
         }
 
-        error_log($idColumn);
-
-        error_log(print_r($pieData, true));
+        error_log("pieData is " . json_encode($pieData));
     
         return new \LORIS\Http\Response\JsonResponse($pieData);
     }

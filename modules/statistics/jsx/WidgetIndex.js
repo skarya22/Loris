@@ -27,7 +27,7 @@ const WidgetIndex = (props) => {
   // used by recruitment.js and studyprogression.js to display each chart.
   const showChart = (section, chartID, chartDetails, setChartDetails) => {
     let {sizing, title, chartType, options} = chartDetails[section][chartID];
-    return <div
+    return chartDetails[section][chartID] && <div
       className={'col-lg-' + sizing + ' col-md-' + sizing + ' col-sm-' + sizing}
       >
       <div
@@ -46,7 +46,7 @@ const WidgetIndex = (props) => {
           emptyOption={false}
           options={options}
           value={options[chartType]}
-          onUserInput={(name, value) => {
+          onUserInput={(_, value) => {
             // set the chart type in the chartDetails object for that chartID
             setChartDetails(
               {...chartDetails,
