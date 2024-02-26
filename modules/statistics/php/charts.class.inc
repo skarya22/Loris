@@ -86,8 +86,8 @@ class Charts extends \NDB_Page
         }
         
         switch ($pathparts[1]) {
-        case 'getConfigChartNames':
-            return $this->_getConfigChartNames();
+        case 'getDashboardChartInfo':
+            return $this->_getDashboardChartInfo();
         case 'scans_bymonth':
             return $this->_handleScansByMonth();
         case 'siterecruitment_line':
@@ -97,7 +97,8 @@ class Charts extends \NDB_Page
         }
     }
 
-    private function _getConfigChartNames() {
+    private function _getDashboardChartInfo() {
+        // dashboard chart info
         $dashboardPanels = $this->loris->getConfiguration()->getSetting('dashboardCharts');
         $chartsData = [];
         foreach($dashboardPanels as $panel) {
@@ -107,12 +108,34 @@ class Charts extends \NDB_Page
                 $chartsData[$decoded->panel] = [];
             }
             $decoded->filters = '';
-            error_log(print_r($decoded->options, true));
+
             $decoded->chartType = key($decoded->options);
             $chartsData[$decoded->panel][$decoded->chartID] = $decoded;
         }
+
+        // dashboard editor settings
+        $DB = \NDB_Factory::singleton()->database();
+        $chartOptions = [
+            'tables' => [
+                'candidate' => [
+                    // available columns inside
+                ]
+            ],
+            ''
+        ];
+
+        foreach($chartOptions['tables'] as $table) {
+            $query = 'SHOW COLUMNS FROM ' . $table;
+
+            $chartOptions['tables'][$table] = $DB->pselect($query, []);
+        }
+
+        $returnData = [
+            'chartsData' => $chartsData,
+            'chartOptions' => $chartOptions
+        ];
         
-        return new \LORIS\Http\Response\JsonResponse($chartsData);
+        return new \LORIS\Http\Response\JsonResponse($returnData);
     }
 
     private function _handleBasicChartData($chartID)
