@@ -256,6 +256,7 @@ const lorisModules = {
     'CohortRelations',
     'configuration_helper',
     'DiagnosisEvolution',
+    'DashboardCharts'
   ],
   conflict_resolver: ['conflict_resolver', 'CandidateConflictsWidget'],
   battery_manager: ['batteryManagerIndex'],

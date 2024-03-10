@@ -166,6 +166,8 @@
     To configure study projects <a href="{$baseurl|default}/configuration/project/">click here</a>.
 </p>
 <p>To configure the diagnosis trajectory of the study <a href="{$baseurl}/configuration/diagnosis_evolution/">click here</a>.
+    To configure the dashboard charts <a href="{$baseurl}/configuration/dashboard_charts/">click here</a>.
+</p>
 <br>
 
 <div class="col-md-3">
