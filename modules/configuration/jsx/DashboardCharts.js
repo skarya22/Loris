@@ -28,20 +28,24 @@ class DashboardCharts extends Component {
         this.state = {
             data: [],
             formData: {
-                new: {
-                    chartID: 'new',
-                    title: null,
-                    instrumentName: null,
-                    sourceField: null,
-                    visitLabel: null,
-                    pendingSourceField: null,
-                },
+                dashboardCharts: {
+                    new: {
+                        chartID: 'new',
+                        title: null,
+                        instrumentName: null,
+                        sourceField: null,
+                        visitLabel: null,
+                        pendingSourceField: null,
+                    },
+                }
             },
             errorMessage: {},
             error: false,
             isLoaded: false,
             currentTab: 'new',
         };
+
+        this.setFormData = this.setFormData.bind(this);
     }
 
     /**
@@ -88,13 +92,15 @@ class DashboardCharts extends Component {
         let formData = this.state.formData;
         console.log('setting form value to ')
         console.log(value)
+        console.log('element is')
+        console.log(formElement)
 
         if (tabID == 'new') {
             let tabData = {
-                ...formData.new,
+                ...formData.dashboardCharts.new,
                 [formElement]: value,
             };
-            formData.new = tabData;
+            formData.dashboardCharts.new = tabData;
         } else {
             let tabData = {
                 ...formData.dashboardCharts[tabID],
@@ -119,7 +125,7 @@ class DashboardCharts extends Component {
         const id = typeof chartID !== 'undefined' ?
             chartID : this.state.currentTab;
         const chartData = id == 'new' ?
-            this.state.formData.new :
+            this.state.formData.dashboardCharts.new :
             this.state.formData.charts.find(element => element.chartID == chartID);
 
         console.log('chart id is')
@@ -160,7 +166,7 @@ class DashboardCharts extends Component {
                             legend='Modify Dashboard Chart'
                         >
                             <TextboxElement
-                                name='Name'
+                                name='title'
                                 label='Chart Title'
                                 onUserInput={this.setFormData}
                                 value={chartData.title}
@@ -177,27 +183,30 @@ class DashboardCharts extends Component {
                                 errorMessage={errorMessage.Panel}
                             />
                             {Object.keys(this.state.formData.projects).map((project) => {
-                                
+                                let projectName = this.state.formData.projects[project]
+                                let tableFieldName = 'table for proj ' + project;
+                                let selectedTableName = this.state.formData.tables[chartData[tableFieldName]];
+                                let columnFieldName = 'column ' + selectedTableName + project;
                                 return <div>
                                     <SearchableDropdown
-                                        name={'table ' + project}
-                                        label={'Source table' + ' for ' + this.state.formData.projects[project]}
-                                        options={Object.keys(this.state.formData.tables)}
-                                        onUserInput={this.setFormData}
-                                        value={chartData.tables ? chartData.tables[this.state.formData.projects[project]] : ''}
-                                        required={true}
-                                        errorMessage={errorMessage.visitLabel}
-                                    />  
-                                     <SearchableDropdown
-                                        name={'table ' + project}
-                                        label={'Source table' + ' for ' + this.state.formData.projects[project]}
+                                        name={tableFieldName}
+                                        label={'Source table' + ' for ' + projectName}
                                         options={this.state.formData.tables}
                                         onUserInput={this.setFormData}
-                                        value={chartData.tables ? chartData.tables[this.state.formData.projects[project]] : ''}
+                                        value={chartData[tableFieldName]}
                                         required={true}
                                         errorMessage={errorMessage.visitLabel}
                                     />  
-
+                                    {/* NOT WORKING WHEN NOT THE NEW CHART ? */}
+                                    {chartData[tableFieldName] && <SearchableDropdown
+                                        name={columnFieldName}
+                                        label={'Column source for '  + selectedTableName}
+                                        options={this.state.formData.columns[selectedTableName]}
+                                        onUserInput={this.setFormData}
+                                        value={chartData[columnFieldName]}
+                                        required={true}
+                                        errorMessage={errorMessage.visitLabel}
+                                    /> }
                                 </div>
                             })}
                             <SearchableDropdown

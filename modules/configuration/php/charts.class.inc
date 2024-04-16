@@ -82,17 +82,31 @@ class Charts extends \NDB_Page
         $projects    = \Utility::getProjectList();
 
         $tables = $DB->pselectCol(
-            "show tables",
+            "SELECT table_name
+            FROM information_schema.tables
+            WHERE table_type = 'BASE TABLE'
+            ",
             []
         );
-        $tables2 = [];
+        error_log('hi');
+        $columns = [];
         // array map each table to its columns
         foreach($tables as $table) {
-            $columns = $DB->pselectCol(
-                "SHOW COLUMNS FROM $table",
-                []
-            );
-            $tables2[$table] = $columns;
+            error_log('here' . $table);
+            if ($DB->tableExists($table)) {
+                try {
+                    $cols = $DB->pselectCol(
+                        "SELECT COLUMN_NAME
+                        FROM INFORMATION_SCHEMA.COLUMNS
+                        WHERE TABLE_NAME = '$table'",
+                        []
+                    );
+                } catch (Error $e) {
+                    error_log('error');
+                    continue;
+                }
+                $columns[$table] = $cols;
+            }
         }
 
         // from setup
@@ -117,6 +131,7 @@ class Charts extends \NDB_Page
         $values['charts']     = $dashboardCharts;
         $values['panels']     = $dashboardPanels;
         $values['tables']     = $tables;
+        $values['columns']    = $columns;
 
         return $values;
     }
