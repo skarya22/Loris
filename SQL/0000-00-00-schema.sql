@@ -2111,9 +2111,9 @@ CREATE TABLE `acknowledgements` (
   `ordering` varchar(255) DEFAULT NULL,
   `full_name` varchar(255) DEFAULT NULL,
   `citation_name` varchar(255) DEFAULT NULL,
-  `affiliations` varchar(255) DEFAULT NULL,
-  `degrees` varchar(255) DEFAULT NULL,
-  `roles` varchar(255) DEFAULT NULL,
+  `affiliations` text DEFAULT NULL,
+  `degrees` text DEFAULT NULL,
+  `roles` text DEFAULT NULL,
   `start_date` date DEFAULT NULL,
   `end_date` date DEFAULT NULL,
   `present` enum('Yes', 'No') DEFAULT NULL,
@@ -2542,3 +2542,29 @@ CREATE TABLE dataquery_study_queries_rel (
     FOREIGN KEY (PinnedBy) REFERENCES users(ID),
     CONSTRAINT unique_pin UNIQUE (QueryID, PinType)
 );
+
+CREATE TABLE `appointment_type` (
+  `AppointmentTypeID` int(10) UNSIGNED NOT NULL,
+  `Name` varchar(32) NOT NULL,
+  PRIMARY KEY (`AppointmentTypeID`),
+  UNIQUE KEY (`Name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+
+INSERT INTO `appointment_type` (`AppointmentTypeID`, `Name`) VALUES
+(3, 'Behavioral'),
+(2, 'Blood Collection'),
+(1, 'MRI');
+
+CREATE TABLE `appointment` (
+  `AppointmentID` int(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `SessionID` int(10) UNSIGNED NOT NULL,
+  `AppointmentTypeID` int(10) UNSIGNED NOT NULL,
+  `StartsAt` datetime NOT NULL,
+  PRIMARY KEY (`AppointmentID`),
+  KEY `AppointmentTypeID` (`AppointmentTypeID`),
+  KEY `SessionID` (`SessionID`),
+  CONSTRAINT `appointment_belongsToSession` FOREIGN KEY (`SessionID`) REFERENCES `session` (`ID`),
+  CONSTRAINT `appointment_hasAppointmentType` FOREIGN KEY (`AppointmentTypeID`) REFERENCES `appointment_type` (`AppointmentTypeID`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+

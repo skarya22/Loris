@@ -9,11 +9,13 @@ import {
     ButtonElement,
     FieldsetElement,
     TextboxElement,
+    CheckboxElement,
     SearchableDropdown,
+    SelectElement,
     TagsElement,
     NumericElement,
   } from 'jsx/Form';
-
+import Select, {SingleValue} from 'react-select';
 /**
  * Dashboard Charts Configuration component
  */
@@ -26,19 +28,7 @@ class DashboardCharts extends Component {
         super(props);
 
         this.state = {
-            data: [],
-            formData: {
-                dashboardCharts: {
-                    new: {
-                        chartID: 'new',
-                        title: null,
-                        instrumentName: null,
-                        sourceField: null,
-                        visitLabel: null,
-                        pendingSourceField: null,
-                    },
-                }
-            },
+            formData: {},
             errorMessage: {},
             error: false,
             isLoaded: false,
@@ -46,6 +36,8 @@ class DashboardCharts extends Component {
         };
 
         this.setFormData = this.setFormData.bind(this);
+        this.addSourceField = this.addSourceField.bind(this);
+        this.sourceSelector = this.sourceSelector.bind(this);
     }
 
     /**
@@ -65,13 +57,17 @@ class DashboardCharts extends Component {
             .then((resp) => resp.json())
             .then((data) => {
                 console.log('setting state to ')
+
+                data.dashboardCharts.new = {
+                    chartID: 'new',
+                    title: 'new chart details',
+                    sameSource: true
+                }
+
                 console.log(data)
+
                 this.setState({
-                    data: data,
-                    formData: JSON.parse(JSON.stringify({
-                        ...this.state.formData,
-                        ...data,
-                    })),
+                    formData: data,
                 })
             })
             .catch((error) => {
@@ -95,19 +91,11 @@ class DashboardCharts extends Component {
         console.log('element is')
         console.log(formElement)
 
-        if (tabID == 'new') {
-            let tabData = {
-                ...formData.dashboardCharts.new,
-                [formElement]: value,
-            };
-            formData.dashboardCharts.new = tabData;
-        } else {
-            let tabData = {
-                ...formData.dashboardCharts[tabID],
-                [formElement]: value,
-            };
-            formData.dashboardCharts[tabID] = tabData;
-        }
+        let tabData = {
+            ...formData.dashboardCharts[tabID],
+            [formElement]: value,
+        };
+        formData.dashboardCharts[tabID] = tabData;
 
         this.setState({
             formData: formData,
@@ -122,27 +110,18 @@ class DashboardCharts extends Component {
     renderDashboardChartConfigForm(chartID) {
         console.log('formdata is ')
         console.log(this.state.formData)
-        const id = typeof chartID !== 'undefined' ?
-            chartID : this.state.currentTab;
-        const chartData = id == 'new' ?
-            this.state.formData.dashboardCharts.new :
-            this.state.formData.charts.find(element => element.chartID == chartID);
+        const chartData = this.state.formData.dashboardCharts[chartID]
 
-        console.log('chart id is')
-        console.log(chartID + ' ' + id)
-        console.log('chart data is')
-        console.log(chartData)
-
-        const deleteButton = id !== 'new' ?
-                (
-                    <ButtonElement
-                        label='Delete'
-                        type='delete'
-                        onUserInput={this.confirmDelete}
-                    />
-                ) : null;
-        const errorMessage = this.state.errorMessage[id] ?
-            this.state.errorMessage[id] :
+        const deleteButton = chartID !== 'new' ?
+            (
+                <ButtonElement
+                    label='Delete'
+                    type='delete'
+                    onUserInput={this.confirmDelete}
+                />
+            ) : null;
+        const errorMessage = this.state.errorMessage[chartID] ?
+            this.state.errorMessage[chartID] :
             {
                 Name: null,
                 ProjectID: null,
@@ -173,60 +152,27 @@ class DashboardCharts extends Component {
                                 required={true}
                                 errorMessage={errorMessage.Name}
                             />
-                            <SearchableDropdown
-                                name='Panel'
+                            <TextboxElement
+                                name='panel'
                                 label='Panel'
-                                options={this.state.formData.panels}
                                 onUserInput={this.setFormData}
                                 value={chartData.panel}
                                 required={true}
                                 errorMessage={errorMessage.Panel}
                             />
-                            {Object.keys(this.state.formData.projects).map((project) => {
-                                let projectName = this.state.formData.projects[project]
-                                let tableFieldName = 'table for proj ' + project;
-                                let selectedTableName = this.state.formData.tables[chartData[tableFieldName]];
-                                let columnFieldName = 'column ' + selectedTableName + project;
-                                return <div>
-                                    <SearchableDropdown
-                                        name={tableFieldName}
-                                        label={'Source table' + ' for ' + projectName}
-                                        options={this.state.formData.tables}
-                                        onUserInput={this.setFormData}
-                                        value={chartData[tableFieldName]}
-                                        required={true}
-                                        errorMessage={errorMessage.visitLabel}
-                                    />  
-                                    {/* NOT WORKING WHEN NOT THE NEW CHART ? */}
-                                    {chartData[tableFieldName] && <SearchableDropdown
-                                        name={columnFieldName}
-                                        label={'Column source for '  + selectedTableName}
-                                        options={this.state.formData.columns[selectedTableName]}
-                                        onUserInput={this.setFormData}
-                                        value={chartData[columnFieldName]}
-                                        required={true}
-                                        errorMessage={errorMessage.visitLabel}
-                                    /> }
-                                </div>
-                            })}
-                            <SearchableDropdown
-                                name='visitLabel'
-                                label='Visit'
-                                options={this.state.formData.visits}
+                            <CheckboxElement
+                                name='sameSource'
+                                label='Use same source for all projects'
                                 onUserInput={this.setFormData}
-                                value={chartData.visitLabel}
-                                required={true}
-                                errorMessage={errorMessage.visitLabel}
+                                value={chartData.sameSource}
+                                errorMessage={errorMessage.sameSource}
                             />
-                            {/* <SearchableDropdown
-                                name='instrumentName'
-                                label='Instrument'
-                                options={this.state.formData.instruments}
-                                onUserInput={this.setFormData}
-                                value={chartData.instrumentName}
-                                required={true}
-                                errorMessage={errorMessage.instrumentName}
-                            /> */}
+
+                            {chartData.sameSource && this.sourceSelector('all', chartData, errorMessage)}
+                            {!chartData.sameSource && Object.keys(this.state.formData.projects).map((project) => {
+                                return this.sourceSelector(project, chartData, errorMessage)
+                            })}
+
                             {/* <TagsElement
                                 name='sourceField'
                                 id={chartID}
@@ -246,7 +192,7 @@ class DashboardCharts extends Component {
                                 onUserRemove={this.removeSourceField}
                                 errorMessage={errorMessage.sourceField}
                             /> */}
-                            {/* <NumericElement
+                            <NumericElement
                                 name='orderNumber'
                                 min={1}
                                 max={100}
@@ -255,7 +201,7 @@ class DashboardCharts extends Component {
                                 value={chartData.orderNumber}
                                 required={true}
                                 errorMessage={errorMessage.orderNumber}
-                            /> */}
+                            />
                             <div className='btn-container'>
                                 <ButtonElement
                                     name='submit'
@@ -277,6 +223,111 @@ class DashboardCharts extends Component {
         );
     }
 
+    sourceSelector(project, chartData, errorMessage) {
+        console.log('source selector for ' + project)
+        let projectName = project == 'all' ? 'all projects' : this.state.formData.projects[project]
+        let tableFieldName = 'sourceTable-proj' + project;
+        let filterFieldName = 'sourceFilter-proj' + project;
+        return <div
+            style={{
+                border: '0.5px solid gray',
+                borderRadius: '5px',
+                marginTop: '5px',
+                marginBottom: '5px',
+                paddingTop: '5px',
+                paddingBottom: '5px',
+            }}
+        >
+            <TagsElement
+                name={tableFieldName}
+                label={'Source table(s)' + ' for ' + projectName}
+                options={this.state.formData.tables}
+                onUserInput={this.setFormData}
+                value={chartData['pending' + tableFieldName]}
+                useSearch={true}
+                onUserAdd={this.addSourceField}
+                pendingValKey={'pending' + tableFieldName}
+                items={chartData[tableFieldName] || []}
+                required={true}
+                errorMessage={errorMessage.sourceTable}
+                btnLabel='Select Table'
+            />  
+            {/* todo: figure out how to join tables */}
+            {chartData[tableFieldName] && chartData[tableFieldName].length > 1 &&
+                <div>Join tables on</div> &&
+                chartData[tableFieldName].map((table, index) => {
+                    if (index == 0) return;
+                    let selectedJoiningTableFieldName = chartData['join-table' + table + '-proj' + project];
+                    console.log(chartData[selectedJoiningTableFieldName])
+                    return <>
+                        <div
+                            style={{
+                                flexDirection: 'row',
+                                display: 'flex'
+                            }}
+                        >
+                            <h4>{table}</h4>
+                            <SelectElement
+                                label={'Join with'}
+                                options={chartData[tableFieldName]}
+                                name={selectedJoiningTableFieldName}
+                                value={chartData[selectedJoiningTableFieldName]}
+                                onUserInput={this.setFormData}
+                                multiple={false}
+                            />
+                            <SelectElement
+                                options={this.state.formData.columns[table]}
+                                name={'joinColumnFrom-table' + table + '-proj' + project}
+                                label={'Join column from ' + table}
+                                value={chartData['joinColumnFrom-table' + table + '-proj' + project]}
+                                onUserInput={this.setFormData}
+                            />
+                            <h4>=</h4>
+                            {chartData[selectedJoiningTableFieldName] && <SelectElement
+                                options={this.state.formData.columns[chartData[selectedJoiningTableFieldName]]}
+                                name={'joinColumnFrom-table' + chartData[tableFieldName][0] + '-proj' + project}
+                                label={'Join column from ' + chartData[selectedJoiningTableFieldName]}
+                                value={this.state.formData['joinColumnFrom-table' + chartData[tableFieldName][0] + '-proj' + project]}
+                                onUserInput={this.setFormData}
+                            /> }
+                        </div>
+                    </>
+                })
+            }
+            {chartData[tableFieldName] && chartData[tableFieldName].map((table) => {
+                console.log(table)
+                let columnFieldName = 'sourceColumn-table' + table + '-proj' + project;
+                return <TagsElement
+                    name={columnFieldName}
+                    label={'Selected columns from '  + table}
+                    options={this.state.formData.columns[table]}
+                    onUserInput={this.setFormData}
+                    value={chartData['pending' + columnFieldName]}
+                    useSearch={true}
+                    onUserAdd={this.addSourceField}
+                    pendingValKey={'pending' + columnFieldName}
+                    items={chartData[columnFieldName] || []}
+                    required={true}
+                    errorMessage={errorMessage.sourceColumn}
+                    btnLabel='Select Column'
+                />
+            })}
+            {chartData[tableFieldName] && <TagsElement
+                name={filterFieldName}
+                label={'Filter out values (SQL WHERE syntax)'}
+                onUserInput={this.setFormData}
+                value={chartData['pending' + filterFieldName]}
+                onUserAdd={this.addSourceField}
+                pendingValKey={'pending' + filterFieldName}
+                items={chartData[filterFieldName] || []}
+                required={true}
+                errorMessage={errorMessage.sourceColumn}
+                btnLabel='Select Column'
+            /> }
+
+        </div>
+    }
+
     /**
      * Renders the React component.
      *
@@ -292,10 +343,9 @@ class DashboardCharts extends Component {
         }
 
         let tabList = [];
-        tabList.push({id: 'new', label: 'New Dashboard Chart'});
 
         let dashboardCharts = [];
-        const charts = this.state.data.charts;
+        const charts = this.state.formData.dashboardCharts;
         if (charts) {
             Object.values(charts).map((chart) => {
                 const chartID = chart.chartID;
@@ -316,7 +366,6 @@ class DashboardCharts extends Component {
                     updateURL={false}
                     onTabChange={(tabId) => this.setState({currentTab: tabId})}
                 >
-                    {this.state.isLoaded && this.renderDashboardChartConfigForm('new')}
                     {dashboardCharts}
                 </VerticalTabs>
             </div>
@@ -337,7 +386,6 @@ class DashboardCharts extends Component {
         // errorMessage[tabID] = {
         //     Name: null,
         //     ProjectID: null,
-        //     visitLabel: null,
         //     instrumentName: null,
         //     sourceField: null,
         //     orderNumber: null,
@@ -513,24 +561,18 @@ class DashboardCharts extends Component {
      * @param {*} pendingValKey
      * @param {*} id
      */
-    // addSourceField(formElement, value, pendingValKey) {
-    //     const tabID = this.state.currentTab;
-    //     let formData = this.state.formData;
+    addSourceField(formElement, value, pendingValKey) {
+        const tabID = this.state.currentTab;
+        let formData = this.state.formData;
 
-    //     if (tabID == 'new') {
-    //         let listItems = formData.new[formElement] || [];
-    //         listItems.push(value);
-    //         formData.new[formElement] = listItems;
-    //         formData.new[pendingValKey] = null;
-    //     } else {
-    //         let listItems =
-    //             formData.dashboardCharts[tabID][formElement] || [];
-    //         listItems.push(value);
-    //         formData.dashboardCharts[tabID][formElement] = listItems;
-    //         formData.dashboardCharts[tabID][pendingValKey] = null;
-    //     }
-    //     this.setState({formData: formData});
-    // }
+        let listItems =
+            formData.dashboardCharts[tabID][formElement] || [];
+        listItems.push(value);
+        formData.dashboardCharts[tabID][formElement] = listItems;
+        formData.dashboardCharts[tabID][pendingValKey] = null;
+
+        this.setState({formData: formData});
+    }
 
     /**
      * Remove source field

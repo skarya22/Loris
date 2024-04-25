@@ -81,26 +81,33 @@ class Charts extends \NDB_Page
 
         $projects    = \Utility::getProjectList();
 
-        $tables = $DB->pselectCol(
+        $results = $DB->pselectCol(
             "SELECT table_name
             FROM information_schema.tables
             WHERE table_type = 'BASE TABLE'
             ",
             []
         );
-        error_log('hi');
+        foreach($results as $table) {
+            $tables[$table] = $table;
+        }
+
         $columns = [];
         // array map each table to its columns
         foreach($tables as $table) {
             error_log('here' . $table);
             if ($DB->tableExists($table)) {
                 try {
-                    $cols = $DB->pselectCol(
+                    $results = $DB->pselectCol(
                         "SELECT COLUMN_NAME
                         FROM INFORMATION_SCHEMA.COLUMNS
                         WHERE TABLE_NAME = '$table'",
                         []
                     );
+                    $cols = [];
+                    foreach($results as $col) {
+                        $cols[$col] = $col;
+                    }
                 } catch (Error $e) {
                     error_log('error');
                     continue;
@@ -114,22 +121,17 @@ class Charts extends \NDB_Page
         $charts = $this->loris->getConfiguration()->getSetting('dashboardCharts');
 
         $dashboardCharts = [];
-        $dashboardPanels = [];
+        
         foreach ($charts as $chart) {
             $chart = json_decode($chart, true);
-            
-            if (!in_array($chart['panel'], $dashboardPanels)) {
-                $dashboardPanels[] = $chart['panel'];
-            }
 
-            $dashboardCharts[] = $chart;
+            $dashboardCharts[$chart['chartID']] = $chart;
         }
 
         // done from setup
 
         $values['projects']   = $projects;
-        $values['charts']     = $dashboardCharts;
-        $values['panels']     = $dashboardPanels;
+        $values['dashboardCharts']     = $dashboardCharts;
         $values['tables']     = $tables;
         $values['columns']    = $columns;
 

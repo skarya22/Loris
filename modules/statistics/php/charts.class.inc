@@ -96,43 +96,26 @@ class Charts extends \NDB_Page
             return $this->_handleBasicChartData($pathparts[1]);
         }
     }
-
+ 
     private function _getDashboardChartInfo() {
         // dashboard chart info
         $dashboardPanels = $this->loris->getConfiguration()->getSetting('dashboardCharts');
-        $chartsData = [];
+        $panelData = [];
         foreach($dashboardPanels as $panel) {
             $decoded = json_decode($panel);
             
-            if (!array_key_exists($decoded->panel, $chartsData)) {
-                $chartsData[$decoded->panel] = [];
+            if (!array_key_exists($decoded->panel, $panelData)) {
+                $panelData[$decoded->panel] = [];
             }
             $decoded->filters = '';
 
             $decoded->chartType = key($decoded->options);
-            $chartsData[$decoded->panel][$decoded->chartID] = $decoded;
+            $panelData[$decoded->panel][$decoded->chartID] = $decoded;
         }
 
-        // dashboard editor settings
-        $DB = \NDB_Factory::singleton()->database();
-        $chartOptions = [
-            'tables' => [
-                'candidate' => [
-                    // available columns inside
-                ]
-            ],
-            ''
-        ];
-
-        foreach($chartOptions['tables'] as $table) {
-            $query = 'SHOW COLUMNS FROM ' . $table;
-
-            $chartOptions['tables'][$table] = $DB->pselect($query, []);
-        }
 
         $returnData = [
-            'chartsData' => $chartsData,
-            'chartOptions' => $chartOptions
+            'panelData' => $panelData
         ];
         
         return new \LORIS\Http\Response\JsonResponse($returnData);
@@ -195,6 +178,7 @@ class Charts extends \NDB_Page
         if ($targetChartData->groupedBy === '') {
             $targetChartData->groupedBy = $targetChartData->idColumn;
         }
+
     
         $query = "SELECT {$targetChartData->groupedBy} as groupedBy, {$targetChartData->idColumn} as id, COUNT(t.CandID) AS totalRecruitment
                     FROM {$targetChartData->targetTable} t
@@ -359,38 +343,57 @@ class Charts extends \NDB_Page
     private function _handleSiteLineData()
     {
         $params        = $this->_parseGetParameters();
-        $user          = \NDB_Factory::singleton()->user();
-        $list_of_sites = $user->getStudySites();
 
         $conditions = $this->_buildQueryConditions($params);
 
         $DB = \NDB_Factory::singleton()->database();
 
         $recruitmentData  = [];
-        $recruitmentBound = $DB->pselect(
-            "SELECT MIN(t.Date_registered), MAX(t.Date_registered)
-            FROM candidate t
-            {$conditions['cohortJoin']}
-            WHERE t.Entity_type='Human'
-            {$conditions['projectQuery']}
-            {$conditions['cohortQuery']}
-            {$conditions['siteQuery']}
-            {$conditions['visitQuery']}",
-            []
+
+        $user          = \NDB_Factory::singleton()->user();
+        $list_of_sites = $user->getStudySites();
+
+        $recruitment_summary = $DB->pselect(
+            "SELECT COUNT(c.CandID) as Count,
+            MONTH(c.Date_registered) as Month,
+            YEAR(c.Date_registered) as Year,
+            c.RegistrationCenterID as SiteID
+                FROM candidate c
+                :cohortJoin
+                :participantStatusJoin
+                    WHERE c.Entity_type='Human'
+                :projectQuery
+                :cohortQuery
+                :participantStatusQuery
+                GROUP BY MONTH(c.Date_registered),
+                    YEAR(c.Date_registered),
+                    c.RegistrationCenterID",
+            [
+                'cohortJoin' => $conditions['cohortJoin'],
+                'participantStatusJoin' => $conditions['participantStatusJoin'],
+                'projectQuery' => $conditions['projectQuery'],
+                'cohortQuery' => $conditions['cohortQuery'],
+                'participantStatusQuery' => $conditions['participantStatusQuery'],
+            ]
         );
 
-        $recruitmentStartDate = $recruitmentBound[0]['MIN(t.Date_registered)'];
-        $recruitmentEndDate   = $recruitmentBound[0]['MAX(t.Date_registered)'];
+        
+        $recruitmentdata = [];
+        foreach ($recruitment_summary as $row) {
+            $siteId = $row['SiteID'];
+            $year   = $row['Year'];
+            $month  = $row['Month'];
+            if (!isset($recruitmentdata[$siteId])) {
+                $recruitmentdata[$siteId] = [
+                    $year => [$month => $row['Count']]
+                ];
+            } else if (!isset($recruitmentdata[$siteId][$year])) {
+                $recruitmentdata[$siteId][$year] = [$month => $row['Count']];
+            } else {
+                assert(!isset($recruitmentdata[$siteId][$year][$month]));
+                $recruitmentdata[$siteId][$year][$month] = $row['Count'];
+            }
 
-        if ($recruitmentStartDate !== null
-            && $recruitmentEndDate !== null
-        ) {
-            $recruitmentData['labels'] = $this->_createSiteLineChartLabels(
-                new \DateTimeImmutable($recruitmentStartDate),
-                new \DateTimeImmutable($recruitmentEndDate)
-            );
-        } else {
-            $recruitmentData['labels'] = [];
         }
 
         foreach ($list_of_sites as $siteID => $siteName) {
@@ -399,11 +402,7 @@ class Charts extends \NDB_Page
                 "data" => $this->_getSiteLineRecruitmentData(
                     $siteID,
                     $recruitmentData['labels'],
-                    $conditions['cohortJoin'],
-                    $conditions['participantStatusJoin'],
-                    $conditions['cohortQuery'],
-                    $conditions['projectQuery'],
-                    $conditions['participantStatusQuery']
+                    $recruitmentData
                 ),
             ];
         }
@@ -568,56 +567,22 @@ class Charts extends \NDB_Page
     /**
      * Helper to generate the data for the site recruitment line for $siteID.
      *
-     * @param int    $siteID                 The centerID to get data for.
-     * @param array  $labels                 The list of labels on the chart
-     *                                       to fill the data for.
-     * @param String $cohortJoin             The join statement for cohort if needed
-     * @param String $PSJoin                 The join statement for
-     *                                       participantStatusJoin
-     *                                       if needed
-     * @param String $cohortQuery            The where statement for cohort if needed
-     * @param String $projectQuery           The where statement
-     *                                       for project if needed
-     * @param String $participantStatusQuery The where statement for
-     *                                       participantStatus if needed
+     * @param int   $siteID          The centerID to get data for.
+     * @param array $labels          The list of labels on the chart to fill
+     *                               the data for.
+     * @param array $recruitmentdata The raw recruitment data to split according to
+                                     the labels
      *
      * @return array
      */
-    private function _getSiteLineRecruitmentData(
-        $siteID,
-        $labels,
-        $cohortJoin,
-        $PSJoin,
-        $cohortQuery,
-        $projectQuery,
-        $participantStatusQuery
-    ) {
-        $DB   = \NDB_Factory::singleton()->database();
+    private function _getSiteLineRecruitmentData($siteID, $labels, $recruitmentdata)
+    {
         $data = [];
-
         foreach ($labels as $label) {
             $month = (strlen($label) == 6)
                 ? substr($label, 0, 1) : substr($label, 0, 2);
-            $year  = substr($label, -4, 4);
-
-            $data[] = $DB->pselectOne(
-                "SELECT COUNT(t.CandID)
-                FROM candidate t
-                {$cohortJoin}
-                {$PSJoin}
-                WHERE t.RegistrationCenterID=:Site
-                AND MONTH(t.Date_registered)=:Month
-                AND YEAR(t.Date_registered)=:Year
-                AND t.Entity_type='Human'
-                {$cohortQuery}
-                {$projectQuery}
-                {$participantStatusQuery}",
-                [
-                    'Site'  => $siteID,
-                    'Month' => $month,
-                    'Year'  => $year,
-                ]
-            );
+            $year   = substr($label, -4, 4);
+            $data[] = intval($recruitmentdata[$siteID][$year][$month] ?? "0");
         }
         return $data;
     }

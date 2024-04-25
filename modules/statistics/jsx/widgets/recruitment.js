@@ -20,8 +20,6 @@ const Recruitment = (props) => {
   let json = props.data;
 
   const [chartDetails, setChartDetails] = useState({});
-  const [dashboardEditorDefault, setDashboardEditorDefault] = useState({});
-  const [dashboardEditorValues, setDashboardEditorValues] = useState({})
 
   const showChart = (panelID, chartID) => {
     return props.showChart(panelID, chartID, chartDetails, setChartDetails);
@@ -38,13 +36,14 @@ const Recruitment = (props) => {
       fetchData(query).then((returnData) => {
         setLoading(false);
         // set chartDetails to have the panelIDs and chartIDs so that the divs can be created
-        setChartDetails(returnData.chartData);
+        setChartDetails(returnData.panelData);
 
-        setDashboardConfigOptions(returnData.chartOptions);
-        setupCharts(false, returnData.chartData).then((data) => {
+        console.log(returnData)
+        setupCharts(false, returnData.panelData).then((data) => {
           // update chartDetails to have the data so that it doesn't need to be re-pulled
           setChartDetails(data);
         });
+        console.log(chartDetails);
       })
       
     }
@@ -52,7 +51,7 @@ const Recruitment = (props) => {
 
   return loading ? <Panel title='Recruitment'><Loader/></Panel> : (
     <>
-      <Panel
+      {/* <Panel
         title='Recruitment'
         id='statistics_recruitment'
         views={[
@@ -112,70 +111,8 @@ const Recruitment = (props) => {
           //     </>,
           //   title: 'Recruitment - cohort breakdown',
           // },
-          {
-            content: <div>
-              <h2>Recruitment - edit dashboard</h2>
-              {/* move to new file */}
-              {/* need to get this to work LOL */}
-              <Panel
-                views={Object.keys(chartDetails).flatMap((panelID) => {
-                  return Object.keys(chartDetails[panelID]).map((chartID) => {
-                    return {
-                      content: <FormElement>
-                        <p>Which table should be queried?</p>
-                        <SelectElement
-                          name='queryTable'
-                          options={
-                            Object.keys(dashboadConfigOptions)
-                          } 
-                          onChangeValue={(newVal) => {
-                            let newDashboardVals = dashboardEditorValues;
-                            newDashboardVals[chartID].queryTable = newVal
-                            setDashboardEditorValues(newDashboardVals)
-                          }}
-                          value={dashboardEditorValues[chartID].queryTable}
-                          />
-                        <p>Which column is the information coming from?</p>
-                        <SelectElement
-                          name='column'
-                          options={
-                            dashboadConfigOptions[dashboardEditorValues[chartID].queryTable]
-                          } 
-                          value={dashboardEditorValues[chartID].column}
-                        />
-                        <p>What chart types?</p>
-                        <SelectElement
-                          name='chartTypes'
-                          options={['bar', 'pie']} 
-                          multiple={true}
-                        />
-                        <p>Chart Title</p>
-                        <TextboxElement
-                          name='chartTitle'
-                          placeholder='Chart Title'
-                          value={dashboardEditorValues.chartTitle}
-                        />
-                        <p>Panel Name</p>
-                        <SearchableDropdown
-                          name='panel'
-                          options={['site breakdown']}
-                        />
-                        <p>Optional WHERE clause to limit results</p>
-                        <TextboxElement 
-                          name='extraWhere'
-                        />
-                      </FormElement>,
-                      title: chartID
-                    }
-                  })
-                })
-                }
-              />
-            </div>,
-            title: 'Edit dashboard'
-          }
         ]}
-      />
+      /> */}
     </>
   );
 };

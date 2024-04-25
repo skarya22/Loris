@@ -65,58 +65,69 @@ class Widgets extends \NDB_Page implements ETagCalculator
 
         $recruitmentTarget = $config->getSetting('recruitmentTarget');
 
-        $totalScans  = $this->_getTotalRecruitment($db);
-        $recruitment = [
+        $recruitmentRaw = $db->pselect(
+            "SELECT
+                COUNT(*) as Count,
+                c.Sex as Sex,
+                c.RegistrationProjectID as ProjectID,
+                c.RegistrationCenterID as CenterID,
+                s.CohortID as CohortID
+             FROM candidate c
+             JOIN session s ON c.CandID = s.CandID
+                 WHERE c.Active='Y' AND c.Entity_type='Human'
+                 AND c.RegistrationCenterID <> 1
+             GROUP BY c.Sex, c.RegistrationProjectID, c.RegistrationCenterID, s.CohortID",
+            []
+        );
+        $totalScans     = array_sum(array_column($recruitmentRaw, 'Count'));
+        $recruitment    = [
             'overall' => $this->_createProjectProgressBar(
                 'overall',
                 "Overall Recruitment",
                 $recruitmentTarget,
                 $totalScans,
-                $db,
+                $recruitmentRaw,
             )
         ];
 
-        $user     = $factory->user();
-        $projects = $user->getProjectIDs();
-
-        $projectOptions     = [];
-        $cohortOptions      = [];
         $visitOptions       = [];
         $recruitmentCohorts = [];
-        foreach ($projects as $projectID) {
+        $cohortOptions = [];
+
+        $projects = \Utility::getProjectList();
+        foreach (array_keys($projects) as $projectID) {
             // Set project recruitment data
-            $projectInfo = $config->getProjectSettings(intval(strval($projectID)));
+            $projectInfo = $config->getProjectSettings($projectID);
             if (is_null($projectInfo)) {
                 throw new \LorisException(
                     'No project settings exist in the Database for ' .
-                    'project ID ' . intval(strval($projectID))
+                    'project ID ' . $projectID
                 );
             }
-            $recruitment[intval(strval($projectID))]
-                = $this->_createProjectProgressBar(
-                    strval($projectID),
+            $recruitment[$projectID] = $this->_createProjectProgressBar(
+                    $projectID,
                     $projectInfo['Name'],
                     $projectInfo['recruitmentTarget'],
-                    $this->getTotalRecruitmentByProject($db, $projectID),
-                    $db
+                    $this->getTotalRecruitmentByColumn($recruitmentRaw, 'ProjectID', $projectID),
+                    $recruitmentRaw
                 );
 
             // Set cohort recruitment data
-            $project = \Project::getProjectFromID($projectID);
+            $project = \Project::getProjectFromID(new \ProjectID(strval($projectID)));
             $cohorts = $project->getCohorts();
 
-            $projectOptions[strval($projectID)] = $project->getName();
-            foreach ($cohorts AS $sp) {
-                $cohortOptions[$sp["cohortId"]]      = $sp["title"];
-                $recruitmentCohorts[$sp["cohortId"]]
+            foreach ($cohorts AS $cohort) {
+                $cohortOptions[$cohort['cohortId']] = $cohort['title'];
+                $recruitmentCohorts[$cohort['cohortId']]
                     = $this->_createCohortProgressBar(
-                        $sp["cohortId"],
-                        $sp["title"],
-                        $sp["recruitmentTarget"],
-                        $db
+                        $cohort["cohortId"],
+                        $cohort["title"],
+                        $cohort["recruitmentTarget"],
+                        $this->getTotalRecruitmentByColumn($recruitmentRaw, 'CohortID', intval($cohort['cohortId'])),
+                        $recruitmentRaw
                     );
                 $cohortVisits = \Utility::getVisitsForCohort(
-                    intval($sp["cohortId"])
+                    intval($cohort['cohortId'])
                 );
                 foreach ($cohortVisits as $visit) {
                     $visitOptions[$visit] = $cohortVisits[$visit];
@@ -124,17 +135,14 @@ class Widgets extends \NDB_Page implements ETagCalculator
             }
         }
 
-        $sites       = \Utility::getSiteList();
-        $userCenters = $user->getCenterIDs();
-
-        $siteOptions = array_intersect_key($sites, $userCenters);
+        $siteOptions       = \Utility::getSiteList();
 
         $participantStatusOptions
             = \Candidate::getParticipantStatusOptions();
 
         $options = [
-            'projects'          => $projectOptions,
-            'cohorts'           => $cohortOptions,
+            'projects'          => $projects,
+            'cohorts'           => $cohorts,
             'sites'             => $siteOptions,
             'visits'            => $visitOptions,
             'participantStatus' => $participantStatusOptions
@@ -153,122 +161,6 @@ class Widgets extends \NDB_Page implements ETagCalculator
         $this->_cache = new \LORIS\Http\Response\JsonResponse($values);
 
         return $this->_cache;
-    }
-
-    /**
-     * Generates the template data for a progress bar.
-     *
-     * @param $ID                The name of the progress bar being
-     *                           created.
-     * @param $title             The title to add to the template variables.
-     * @param $recruitmentTarget The target for this recruitment type.
-     * @param \Database $db                The database connection to get data from.
-     *
-     * @return array Smarty template data
-     */
-    private function _createCohortProgressBar(
-        $ID,
-        $title,
-        $recruitmentTarget,
-        \Database $db
-    ) {
-
-        $user        = \User::singleton();
-        $projectIDs  = $user->getProjectIDs();
-        $projectList = "'" . implode("','", $projectIDs) . "'";
-        $centerIDs   = $user->getCenterIDs();
-        $centerList  = "'" . implode("','", $centerIDs) . "'";
-
-        $totalRecruitment = intval(
-            $db->pselectOne(
-                "SELECT COUNT(DISTINCT s.CandID)
-                FROM session s JOIN candidate c
-                WHERE s.CohortID=:sid
-                AND s.CenterID IN ({$centerList})
-                AND s.ProjectID IN ({$projectList})
-                AND c.RegistrationCenterID <> 1",
-                ['sid' => $ID]
-            )
-        );
-
-        $rv = [
-            'total_recruitment' => $totalRecruitment,
-            'title'             => $title,
-        ];
-
-        if (empty($recruitmentTarget)) {
-            $recruitmentTarget = $totalRecruitment;
-        }
-
-        $rv['recruitment_target'] = $recruitmentTarget;
-        $totalFemales         = $this->getTotalSexByCohort(
-            $db,
-            "Female",
-            intval($ID)
-        );
-        $rv['female_total']   = $totalFemales;
-        $rv['female_percent'] = $recruitmentTarget ?
-            round($totalFemales / $recruitmentTarget * 100) :
-            null;
-        $totalMales           = $this->getTotalSexByCohort(
-            $db,
-            "Male",
-            intval($ID)
-        );
-        $rv['male_total']     = $totalMales;
-        $rv['male_percent']   = $recruitmentTarget ?
-            round($totalMales / $recruitmentTarget * 100) :
-            null;
-        if ($totalRecruitment > $recruitmentTarget) {
-            $rv['surpassed_recruitment'] = "true";
-
-            $rv['female_full_percent'] = $totalRecruitment ?
-                round($totalFemales / $totalRecruitment * 100) :
-                null;
-
-            $rv['male_full_percent'] = $totalRecruitment ?
-                round($totalMales / $totalRecruitment * 100) :
-                null;
-        }
-        return $rv;
-    }
-
-    /**
-     * Gets the total count of candidates of a specific sex,
-     * associated with a specific project
-     *
-     * @param \Database $DB       A database connection to retrieve information
-     *                            from.
-     * @param string    $sex      A biological sex (male or female)
-     * @param int       $cohortID Cohort ID
-     *
-     * @return int|string
-     */
-    function getTotalSexByCohort(\Database $DB, string $sex, int $cohortID)
-    {
-
-        $user        = \User::singleton();
-        $projectIDs  = $user->getProjectIDs();
-        $projectList = "'" . implode("','", $projectIDs) . "'";
-        $centerIDs   = $user->getCenterIDs();
-        $centerList  = "'" . implode("','", $centerIDs) . "'";
-
-        return intval(
-            $DB->pselectOne(
-                "SELECT COUNT(DISTINCT s.CandID)
-                FROM session s
-                JOIN candidate c ON c.CandID=s.CandID
-                WHERE CohortID=:sid
-                AND CenterID IN ({$centerList})
-                AND ProjectID IN ({$projectList})
-                AND c.Sex=:sex
-                AND c.RegistrationCenterID <> 1",
-                [
-                    'sex' => $sex,
-                    'sid' => $cohortID
-                ]
-            )
-        );
     }
 
     /**
@@ -291,14 +183,14 @@ class Widgets extends \NDB_Page implements ETagCalculator
     /**
      * Generates the template data for a progress bar.
      *
-     * @param string    $ID                The name of the progress bar being
-     *                                     created.
-     * @param string    $title             The title to add to the template
-     *                                     variables.
-     * @param int       $recruitmentTarget The target for this recruitment type.
-     * @param int       $totalRecruitment  The total number of candidates of all
-     *                                     types.
-     * @param \Database $db                The database connection to get data from.
+     * @param string $ID                The name of the progress bar being
+     *                                  created.
+     * @param string $title             The title to add to the template
+     *                                  variables.
+     * @param int    $recruitmentTarget The target for this recruitment type.
+     * @param int    $totalRecruitment  The total number of candidates of all
+     *                                  types.
+     * @param array  $rawData           The raw data from the database
      *
      * @return array Smarty template data
      */
@@ -307,7 +199,7 @@ class Widgets extends \NDB_Page implements ETagCalculator
         $title,
         $recruitmentTarget,
         $totalRecruitment,
-        \Database $db
+        $rawData
     ): array {
         $rv = [
             'total_recruitment' => $totalRecruitment,
@@ -319,26 +211,80 @@ class Widgets extends \NDB_Page implements ETagCalculator
 
         $rv['recruitment_target'] = $recruitmentTarget;
         if ($ID == 'overall') {
-            $totalFemales = $this->_getTotalSex($db, "Female");
+            $totalFemales = $this->_getTotalSex($rawData, "Female");
         } else {
             $totalFemales = $this->getTotalSexByProject(
-                $db,
+                $rawData,
                 "Female",
-                intval(strval($ID))
+                intval($ID)
             );
         }
         $rv['female_total']   = $totalFemales;
         $rv['female_percent']
             = round($totalFemales / $recruitmentTarget * 100);
         if ($ID == 'overall') {
-            $totalMales = $this->_getTotalSex($db, "Male");
+            $totalMales = $this->_getTotalSex($rawData, "Male");
         } else {
-            $totalMales = $this->getTotalSexByProject(
-                $db,
-                "Male",
-                intval(strval($ID))
-            );
+            $totalMales = $this->getTotalSexByProject($rawData, "Male", intval($ID));
         }
+        $rv['male_total']   = $totalMales;
+        $rv['male_percent']
+            = round($totalMales / $recruitmentTarget * 100);
+        if ($totalRecruitment > $recruitmentTarget) {
+            $rv['surpassed_recruitment'] = "true";
+
+            $rv['female_full_percent']
+                = round($totalFemales / $totalRecruitment * 100);
+
+            $rv['male_full_percent']
+                = round($totalMales / $totalRecruitment * 100);
+        }
+        return $rv;
+    }
+
+    /**
+     * Generates the template data for a progress bar.
+     *
+     * @param string $ID                The name of the progress bar being
+     *                                  created.
+     * @param string $title             The title to add to the template
+     *                                  variables.
+     * @param int    $recruitmentTarget The target for this recruitment type.
+     * @param int    $totalRecruitment  The total number of candidates of all
+     *                                  types.
+     * @param array  $rawData           The raw data from the database
+     *
+     * @return array Smarty template data
+     */
+    private function _createCohortProgressBar(
+        $ID,
+        $title,
+        $recruitmentTarget,
+        $totalRecruitment,
+        $rawData
+    ): array {
+        $rv = [
+            'total_recruitment' => $totalRecruitment,
+            'title'             => $title,
+        ];
+        if (empty($recruitmentTarget)) {
+            return $rv;
+        }
+
+        $rv['recruitment_target'] = $recruitmentTarget;
+
+        $totalFemales = $this->getTotalSexByCohort(
+            $rawData,
+            "Female",
+            intval($ID)
+        );
+
+        $rv['female_total']   = $totalFemales;
+        $rv['female_percent']
+            = round($totalFemales / $recruitmentTarget * 100);
+
+        $totalMales = $this->getTotalSexByCohort($rawData, "Male", intval($ID));
+        
         $rv['male_total']   = $totalMales;
         $rv['male_percent']
             = round($totalMales / $recruitmentTarget * 100);
@@ -357,71 +303,82 @@ class Widgets extends \NDB_Page implements ETagCalculator
     /**
      * Gets the total count of candidates of a specific sex
      *
-     * @param \Database $db  A database connection to retrieve information
-     *                       from.
-     * @param string    $sex Biological sex (male or female)
+     * @param array  $raw The raw data returned from the SQL query.
+     * @param string $sex Biological sex (male or female)
      *
      * @return int
      */
-    private function _getTotalSex(\Database $db, string $sex) : int
+    private function _getTotalSex(array $raw, string $sex) : int
     {
-        return $db->pselectOneInt(
-            "SELECT COUNT(c.CandID)
-            FROM candidate c
-            WHERE c.Sex=:sex AND c.Active='Y' AND c.Entity_type='Human'
-            AND c.RegistrationCenterID <> 1",
-            ['sex' => $sex]
-        ) ?? 0;
+        $sum = 0;
+        foreach ($raw as $row) {
+            if ($row['Sex'] == $sex) {
+                $sum += intval($row['Count']);
+            }
+        }
+        return $sum;
     }
 
     /**
      * Gets the total count of candidates of a specific sex,
      * associated with a specific project
      *
-     * @param \Database $DB        A database connection to retrieve information
-     *                             from.
-     * @param string    $sex       A biological sex (male or female)
-     * @param int       $projectID Project ID
+     * @param array  $raw       The raw data returned from the SQL query.
+     * @param string $sex       A biological sex (male or female)
+     * @param int    $projectID Project ID
      *
      * @return int
      */
-    function getTotalSexByProject(\Database $DB, string $sex, int $projectID) : int
+    function getTotalSexByProject(array $raw, string $sex, int $projectID) : int
     {
-        return $DB->pselectOneInt(
-            "SELECT COUNT(c.CandID)
-            FROM candidate c
-            WHERE c.Sex=:sex
-            AND c.Active='Y'
-            AND c.RegistrationProjectID=:PID
-            AND c.Entity_type='Human' AND c.RegistrationCenterID <> 1",
-            [
-                'sex' => $sex,
-                'PID' => "$projectID",
-            ]
-        ) ?? 0;
+        $sum = 0;
+        foreach ($raw as $row) {
+            if ($row['Sex'] == $sex && $row['ProjectID'] == $projectID) {
+                $sum += intval($row['Count']);
+            }
+        }
+        return $sum;
+    }
+
+    /**
+     * Gets the total count of candidates of a specific sex,
+     * associated with a specific Cohort
+     *
+     * @param \Database $DB       A database connection to retrieve information
+     *                            from.
+     * @param string    $sex      A biological sex (male or female)
+     * @param int       $cohortID Cohort ID
+     *
+     * @return int|string
+     */
+    function getTotalSexByCohort(array $raw, string $sex, int $cohortID) : int
+    {
+        $sum = 0;
+        foreach ($raw as $row) {
+            if ($row['Sex'] == $sex && $row['CohortID'] == $cohortID) {
+                $sum += intval($row['Count']);
+            }
+        }
+        return $sum;
     }
 
     /**
      * Gets the total count of candidates associated with a specific project.
      *
-     * @param \Database  $db        A database connection to retrieve information
-     *                              from.
-     * @param \ProjectID $projectID The Project ID to get recruitment for.
+     * @param array $data      The raw data returned from the SQL query.
+     * @param int   $projectID The Project ID to get recruitment for.
      *
      * @return int
      */
-    function getTotalRecruitmentByProject(\Database $db, \ProjectID $projectID): int
+    function getTotalRecruitmentByColumn(array $data, string $column, int $value): int
     {
-        $projectID = intval(strval($projectID));
-        return $db->pselectOneInt(
-            "SELECT COUNT(*)
-             FROM candidate c
-             WHERE c.Active='Y'
-              AND c.RegistrationProjectID=:PID
-              AND c.Entity_type='Human'
-              AND c.RegistrationCenterID <> 1",
-            ['PID' => "$projectID"]
-        ) ?? 0;
+        $sum = 0;
+        foreach ($data as $row) {
+            if (intval($row[$column]) == $value) {
+                $sum += intval($row['Count']);
+            }
+        }
+        return $sum;
     }
 
     /**
