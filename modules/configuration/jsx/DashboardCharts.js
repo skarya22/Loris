@@ -257,8 +257,8 @@ class DashboardCharts extends Component {
                 <div>Join tables on</div> &&
                 chartData[tableFieldName].map((table, index) => {
                     if (index == 0) return;
-                    let selectedJoiningTableFieldName = chartData['join-table' + table + '-proj' + project];
-                    console.log(chartData[selectedJoiningTableFieldName])
+                    let selectedJoiningTableFieldName = 'join-table' + table + '-proj' + project;
+
                     return <>
                         <div
                             style={{
@@ -266,37 +266,51 @@ class DashboardCharts extends Component {
                                 display: 'flex'
                             }}
                         >
-                            <h4>{table}</h4>
                             <SelectElement
-                                label={'Join with'}
-                                options={chartData[tableFieldName]}
+                                label={'Join ' + table + ' with'}
+                                options={chartData[tableFieldName].reduce((acc, val) => {
+                                    if (val != table) {
+                                        acc[val] = val;
+                                    }
+                                    return acc;
+                                }, {})}
                                 name={selectedJoiningTableFieldName}
                                 value={chartData[selectedJoiningTableFieldName]}
                                 onUserInput={this.setFormData}
                                 multiple={false}
+                                emptyOption={false}
                             />
                             <SelectElement
-                                options={this.state.formData.columns[table]}
+                                // change each option to have 'table.' infront
+                                // options={this.state.formData.columns[table]}
+                                options={Object.keys(this.state.formData.columns[table]).reduce((acc, val) => {
+                                    acc[val] = table + '.' + val;
+                                    return acc;
+                                }, {})}
                                 name={'joinColumnFrom-table' + table + '-proj' + project}
-                                label={'Join column from ' + table}
+                                label={'on'}
                                 value={chartData['joinColumnFrom-table' + table + '-proj' + project]}
                                 onUserInput={this.setFormData}
                             />
-                            <h4>=</h4>
                             {chartData[selectedJoiningTableFieldName] && <SelectElement
-                                options={this.state.formData.columns[chartData[selectedJoiningTableFieldName]]}
-                                name={'joinColumnFrom-table' + chartData[tableFieldName][0] + '-proj' + project}
-                                label={'Join column from ' + chartData[selectedJoiningTableFieldName]}
-                                value={this.state.formData['joinColumnFrom-table' + chartData[tableFieldName][0] + '-proj' + project]}
+                                options={Object.keys(this.state.formData.columns[chartData[selectedJoiningTableFieldName]]).reduce((acc, val) => {
+                                    acc[val] = chartData[selectedJoiningTableFieldName] + '.' + val;
+                                    return acc;
+                                }, {})}
+                                name={'joinColumnEquals-table' + table + '-proj' + project}
+                                label={'='}
+                                value={chartData['joinColumnEquals-table' + table + '-proj' + project]}
                                 onUserInput={this.setFormData}
                             /> }
                         </div>
                     </>
                 })
             }
+            {/* TODO: for some reason this is showing tables as options and not columns :( */}
             {chartData[tableFieldName] && chartData[tableFieldName].map((table) => {
-                console.log(table)
                 let columnFieldName = 'sourceColumn-table' + table + '-proj' + project;
+                let bob = this.state.formData.columns[table]
+                console.log(bob)
                 return <TagsElement
                     name={columnFieldName}
                     label={'Selected columns from '  + table}
