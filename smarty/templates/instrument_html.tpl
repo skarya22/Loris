@@ -2,6 +2,7 @@
 <style type="text/css">
 	.table-instrument>tbody>tr>th{
 		color: black;
+		white-space: nowrap;
 	}
 	.table-instrument>tbody>tr>th, .table-instrument>tbody>tr>td  {
 	     border-top: none;
